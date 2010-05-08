@@ -1,0 +1,121 @@
+MyTemplate - DokuWiki Plugin for creating complex page templates
+
+The plugin allows you to seperate the structure of a wiki page and the data contained within. This
+allows you to have multiple data pages referencing the same structure page. Technically, you can
+also combine several structure pages.
+I will continue to use the term "structure page" for the pages that contain dokuwiki code and
+placeholders for data and "data page" for those that contain the actual data that will be inserted
+into those placeholders. Both types of pages can be viewed when browsing the wiki.
+The structure page will be displayed as is, whereas the data page is displayed as the final
+compiled page, structure and all.
+
+Please note that I wrote this plugin to solve a very specific problem so some of the functionality
+may not be generally useful.
+This is also my first dokuwiki plugin andd I'm very experienced with php, so this plugin very
+possibly contains security issues and bugs.
+
+1. Declaring the structure page:
+
+All replacement commands look like the following:
+~~COMMAND(x[,var]):param1[:param2[:param3]]~[!]~
+
+- The available commands are listed below.
+- "var" is optional. If set, the result of this replacement will be stored in a variable by that
+  name and can later be used again.
+- "x" is the "pass" during which the placeholder should be replaced. This will be 0 most of the
+  time, but on some occasions, you may need more control over the order in which things get
+  replaced. If you don't get the point, the list-command is a common case where using different
+  passes makes sense and it should become obvious why.
+- depending on the command specified, up to three parameters are required, separated by colons.
+  Please note that a parameter could also be another replacement command, they will be interpreted
+  inner-to-outer automatically.
+- finally, you may place a ! between the final two ~ to have MyTemplate not output anything. This
+  makes sense if you want to calculate an intermediate result to be used later.
+
+Available Commands:
+VAR       - This is your basic placeholder replacement. Takes one parameter that will be replaced by the
+            value of the variable. (sample: ~~VAR(0):key~~)
+LOOK      - This is a map lookup. You can define an array in the structure page and use a variable
+            defined in the data page as the index. see "2. Declaring data" for how to declare the map.
+            (sample: ~~LOOK(0):MAP:3~~)
+LOOKRANGE - This is similar to look, but with this command, the map doesn't have to contain the
+            exact index. The map-indices is allowed to have gaps and the index specified in
+            LOOKRANGE is rounded down to the nearest valid key.
+CALC      - This allows you to do mathematical calculations based on variables or results from
+            previous commands. All math operators and most php functions should work.
+            (sample: ~~CALC(0):round(~~VAR(0):FOO~~ * ~~VAR(0):BAR~~)~~
+COUNT     - counts the occurences of param1 within param2 (sample: ~~COUNT(0):,:~~VAR(0):FOO ~~ ~~)
+IF        - If param1 evaluates to "true" as far as php is concerned, param2 will be printed,
+            otherwise param3 is. Please note that in this case only param2 or param3 will even be
+            evaluated, the other also doesn't get its result assigned to a variable.
+            (sample: ~~IF(0):~~VAR(0):SAYWHAT~~:what:huh~~)
+REPLACE   - replaces all occurences of param2 in param1 with param3.
+            (sample: ~~REPLACE:Hello NAME:NAME:~~VAR(0):NAME~~ ~~)
+LIST      - this creates a dokuwiki table from values supplied on the data page. On the data
+            page you supply a list of rows, each of which consisting of comma separated values
+            (csv). In the structure page, you can refer to each column as @1, @2, ...
+            A sample for a list would be:
+
+            WIKISOFTWARE = ( 'DokuWiki', '2009-12-25', 'GPL 2' ),
+                           ( 'MediaWiki', '2010-04-07', 'GPL' )
+            Use in the template would then look like this:
+            ^ Name ^ Last Release ^ License ^
+            ~~LIST(0):WIKISOFTWARE:[| @0 | @1 | @2 | ]:5~~
+
+            As you can see, the first parameter names the list to display, the second one specifies
+            the structure of each row. The final parameter is optional. If set, the table will
+            contain at least that many rows. In the above case, 3 empty lines will be appended.
+            Of course the cells can contain further replacement commands.
+            Note that if the pass of these commands is less or equal to the pass of the list-command
+            itself, they will be evaluated BEFORE the list is expanded, otherwise they are expanded
+            afterwards and will thus refer to the content of the row.
+
+2. Declaring data:
+
+data is declared with simple key-value pairs, one per line:
+VARIABLENAME = VALUE
+
+When declaring a variable for a LIST command, VALUE is a list of rows,
+where is row a is enclosed in regular brakets:
+LIST = (5, true, "foo"),
+       (3, false, "bar")
+Please note that rows after the first need to be indented for parsing to work.
+
+All variable declarations need to be enclosed within the following tags
+[VARIABLES]
+[ENDVARIABLES]
+
+Maps are declared either in the structure page or a seperate data page. In
+the simple case they are defined like this:
+NAME = a, b, c, d, e,
+       f, g, h, i, j
+
+In this case, this is a simple array, the index 0 will map to a, the index
+2 to c and so on.
+Again, don't forget to indent rows after the first.
+
+Alternatively, you can manually specify indices:
+NAME = 1 = a, 3 = b, 8 = c 
+
+This mainly makes sense if you intend to use LOOKRANGE for the lookup.
+There, 1 and 2 will map to "a", 3,4,5,6 and 7 to "b" and everything else
+to "c".
+
+maps are declars within the tags
+[MAPS]
+[ENDMAPS]
+
+
+3. Putting everything together
+
+finally, you must put together the data.
+Simply put this at the end of your data page:
+[INCLUDE:namespace:foo:template]
+
+When the data page is displayed, everything between [VARIABLES] and
+[ENDVARIABLES] is evaluated but not printed.
+The INCLUDE will be replaced with the content of the interpreted
+template page and only that will be displayed.
+Of course you can have multiple includes and thus construct a page
+from multiple templates or you can include variable definitions from
+a separate page.

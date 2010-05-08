@@ -171,8 +171,6 @@ class action_plugin_mytemplate extends DokuWiki_Action_Plugin {
       $replacements = 1;
       for ($pass = 0; $replacements != 0 && ($maxpasses == -1 || $pass <= $maxpasses); $pass++) {
         if ($maxpasses == -1) {
-//          dbg("pass $pass");
-//          dbg($text);
           $replacements = 0;
         }
 
@@ -254,12 +252,8 @@ class action_plugin_mytemplate extends DokuWiki_Action_Plugin {
           }
           if ($store_only) {
             $repls[] = array($offset, $len, '');
-//            $text = substr_replace($text, '', $offset, $len);
-//            $text = str_replace($match[0], '', $text);
           } else {
             $repls[] = array($offset, $len, $value);
-//            $text = substr_replace($text, $value, $offset, $len);
-//            $text = str_replace($match[0], $value, $text);
           }
           $replacements++;
         }
