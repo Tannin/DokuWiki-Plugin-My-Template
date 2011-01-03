@@ -12,7 +12,7 @@ compiled page, structure and all.
 Please note that I wrote this plugin to solve a very specific problem so some of the functionality
 may not be generally useful.
 This is also my first dokuwiki plugin andd I'm very experienced with php, so this plugin very
-possibly contains security issues and bugs.
+possibly contains security issues and bugs. I really appreciate any feedback.
 
 1. Declaring the structure page:
 
@@ -62,13 +62,17 @@ LIST      - this creates a dokuwiki table from values supplied on the data page.
             ^ Name ^ Last Release ^ License ^
             ~~LIST(0):WIKISOFTWARE:[| @0 | @1 | @2 | ]:5~~
 
-            As you can see, the first parameter names the list to display, the second one specifies
-            the structure of each row. The final parameter is optional. If set, the table will
-            contain at least that many rows. In the above case, 3 empty lines will be appended.
-            Of course the cells can contain further replacement commands.
+            As you can see, the first parameter (WIKISOFTWARE) names the list to display, the second
+            one ([ @0 | @1 | @2 | ] specifies the structure of each row. The final parameter (5) is
+            optional. If set, the table will contain at least that many rows.
+            In the above case, 3 empty lines will be appended (5 minus the 2 lines of content).
+            Of course the cells can contain further replacement commands:
+            ~~LIST(0):SOMELIST:[| @0 | ~~IF(1):@1:YES:NO~~ | ]:5~~
             Note that if the pass of these commands is less or equal to the pass of the list-command
-            itself, they will be evaluated BEFORE the list is expanded, otherwise they are expanded
-            afterwards and will thus refer to the content of the row.
+            itself, they will be evaluated BEFORE the list is expanded, otherwise (like in the sample)
+            they are expanded afterwards and will thus refer to the content of the row.
+NOINCLUDE - the content of this command is completely ignored and will not show up in the final page.
+            this can be used to add comments to your template page or temporarily disable part of it.
 
 2. Declaring data:
 

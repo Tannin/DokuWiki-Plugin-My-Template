@@ -113,7 +113,6 @@ class action_plugin_mytemplate extends DokuWiki_Action_Plugin {
           $formula = str_replace($var[0], '0', $formula);
         }
       }
-//      dbg($formula);
       return eval("return $formula;");
     } 
 
@@ -142,10 +141,9 @@ class action_plugin_mytemplate extends DokuWiki_Action_Plugin {
       foreach ($tuples as $tuple) {
         $fields = explode(',', $tuple[1]);
         $row = $format;
-        $pos = 0;
-        foreach ($fields as $field) {
-          $row = str_replace('@' . $pos, trim($field, ' \''), $row);
-          $pos++;
+        $pos = count($fields) - 1;
+        for ($pos = count($fields) - 1; $pos >= 0; $pos--) {
+          $row = str_replace('@' . $pos, trim($fields[$pos], ' \''), $row);
         }
         if ($table != '') $table .= "\n";
         $table .= $row;
@@ -176,7 +174,7 @@ class action_plugin_mytemplate extends DokuWiki_Action_Plugin {
 
         $repls = array();
 
-        preg_match_all("/~~(?P<function>VAR|LOOK|LOOKRANGE|CALC|COUNT|LIST|IF|REPLACE)\((?P<pass>[0-9]+)(,(?P<assignment_target>[A-Za-z_][A-Za-z0-9_]*))?\):(?P<param1>([^:~]+|(?R))*)(:(?P<param2>([^:~]+|(?R))*))?(:(?P<param3>([^:~]+|(?R))*))?~(?P<store_only>!)?~/", $text, $matches, PREG_SET_ORDER | PREG_OFFSET_CAPTURE);
+        preg_match_all("/~~(?P<function>VAR|LOOK|LOOKRANGE|CALC|COUNT|LIST|IF|REPLACE|NOINCLUDE)\((?P<pass>[0-9]+)(,(?P<assignment_target>[A-Za-z_][A-Za-z0-9_]*))?\):(?P<param1>([^:~]+|(?R))*)(:(?P<param2>([^:~]+|(?R))*))?(:(?P<param3>([^:~]+|(?R))*))?~(?P<store_only>!)?~/", $text, $matches, PREG_SET_ORDER | PREG_OFFSET_CAPTURE);
         foreach ($matches as $match) {
           $function          = $match["function"][0];
           $targetpass        = $match["pass"][0];
@@ -235,7 +233,7 @@ class action_plugin_mytemplate extends DokuWiki_Action_Plugin {
               $value = $this->do_list($this->variables[$param1], trim($param2, '[]'), $param3);
             break;
             case 'IF':
-              if ($param1) {
+              if ($this->do_calculate($param1)) {
                 $this->substitute($param2, $pass);
                 $value = $param2;
               } else {
@@ -245,6 +243,9 @@ class action_plugin_mytemplate extends DokuWiki_Action_Plugin {
             break;
             case 'REPLACE':
               $value = preg_replace('\'' . addslashes($param1) . '\'', $param2, $param3);
+            break;
+            case 'NOINCLUDE':
+              // nop
             break;
           }
           if ($assignment_target) {
