@@ -173,7 +173,6 @@ class action_plugin_mytemplate extends DokuWiki_Action_Plugin {
         }
 
         $repls = array();
-
         preg_match_all("/~~(?P<function>VAR|LOOK|LOOKRANGE|CALC|COUNT|LIST|IF|REPLACE|NOINCLUDE)\((?P<pass>[0-9]+)(,(?P<assignment_target>[A-Za-z_][A-Za-z0-9_]*))?\):(?P<param1>([^:~]+|(?R))*)(:(?P<param2>([^:~]+|(?R))*))?(:(?P<param3>([^:~]+|(?R))*))?~(?P<store_only>!)?~/", $text, $matches, PREG_SET_ORDER | PREG_OFFSET_CAPTURE);
         foreach ($matches as $match) {
           $function          = $match["function"][0];
@@ -183,7 +182,6 @@ class action_plugin_mytemplate extends DokuWiki_Action_Plugin {
           $param2            = trim($match["param2"][0]);
           $param3            = trim($match["param3"][0]);
           $store_only        = $match["store_only"][0]; // if set, the result is not written to the text
-
           $offset = $match[0][1];
           $len = strlen($match[0][0]);
 
@@ -196,7 +194,6 @@ class action_plugin_mytemplate extends DokuWiki_Action_Plugin {
             if (!empty($param2)) $this->substitute($param2, $pass);
             if (!empty($param3)) $this->substitute($param3, $pass);
           }
-
           switch ($function) {  
             case 'LOOK':
               if (array_key_exists($param1, $this->maps)) {
@@ -233,7 +230,7 @@ class action_plugin_mytemplate extends DokuWiki_Action_Plugin {
               $value = $this->do_list($this->variables[$param1], trim($param2, '[]'), $param3);
             break;
             case 'IF':
-              if ($this->do_calculate($param1)) {
+              if ($param1) {
                 $this->substitute($param2, $pass);
                 $value = $param2;
               } else {
@@ -245,7 +242,7 @@ class action_plugin_mytemplate extends DokuWiki_Action_Plugin {
               $value = preg_replace('\'' . addslashes($param1) . '\'', $param2, $param3);
             break;
             case 'NOINCLUDE':
-              // nop
+              $value = '';
             break;
           }
           if ($assignment_target) {
@@ -276,6 +273,7 @@ class action_plugin_mytemplate extends DokuWiki_Action_Plugin {
 
       if (strstr($event->data, '~~TEMPLATE~~')) {
         $event->data = str_replace('~~TEMPLATE~~', '', $event->data);
+        $event->data = preg_replace('/~~NOINCLUDE\([0-9]+\):([^~]*)~~/', '\1', $event->data);
         return;
       }
 
