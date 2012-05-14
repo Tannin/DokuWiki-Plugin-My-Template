@@ -20,7 +20,7 @@ if (!defined('DOKU_TAB'))
 if (!defined('DOKU_PLUGIN'))
     define('DOKU_PLUGIN', DOKU_INC . 'lib/plugins/');
 
-require_once (DOKU_PLUGIN . 'action.php');
+require_once(DOKU_PLUGIN . 'action.php');
 require_once(DOKU_INC . 'inc/pageutils.php');
 
 
@@ -68,6 +68,7 @@ function fill_map($block, &$map) {
       list($key, $value) = explode('=', $line, 2);
       $key = trim($key);
       $value = trim($value);
+//      dbg($key . " - " . $value);
     }
   }
   if (key != '') {
@@ -93,8 +94,105 @@ class action_plugin_mytemplate extends DokuWiki_Action_Plugin {
     }
 
     function register(& $controller) {
-        $controller->register_hook('PARSER_WIKITEXT_PREPROCESS', 'BEFORE', $this, 'handle_content_display', array ());
+        $controller->register_hook('PARSER_WIKITEXT_PREPROCESS', 'BEFORE', $this, 'handle_content_display');
+        $controller->register_hook('IO_WIKIPAGE_WRITE', 'BEFORE', $this, 'write_template_page');
+        $controller->register_hook('IO_WIKIPAGE_READ', 'AFTER', $this, 'read_template_page');
     }
+
+    function process_page($input) {
+      $page = $input;
+
+      // integrate all includes
+      $includematches = array();
+      preg_match_all('/\[INCLUDE:([^\]]*)\]/', $page, $includematches, PREG_SET_ORDER);
+      foreach ($includematches as $includematch) {
+        $includeid = $includematch[1];
+        $file = wikiFN($includeid, '');
+        if (@file_exists($file)) {
+          $content = io_readWikiPage($file, $includeid);
+        }
+        if (!$content) {
+          $page = str_replace($includematch[0], "include \"$includeid\" not found", $page);
+          continue;
+        }
+        $page = str_replace($includematch[0], $content, $page);
+      }
+ 
+      $page = str_replace('~~TEMPLATE~~', '', $page);
+      // interpret and remove all maps and variable blocks
+      $mapblocks = array();
+      preg_match_all('/\[MAPS\](.*)?\[ENDMAPS\]/sm', $page, $mapblocks, PREG_SET_ORDER);
+      foreach($mapblocks as $mapblock) {
+        fill_map($mapblock[1], $this->maps);
+        // at this point, maps are stored as strings, we need to convert them
+        foreach(array_keys($this->maps) as $mapname) {
+          $list = explode(',', $this->maps[$mapname]);
+          $map  = array();
+          foreach ($list as $field) {
+            if ($pos = strpos($field, '=')) {
+              $map[trim(substr($field, 0, $pos))] = trim(substr($field, $pos + 1));
+            } else {
+              // no key found => append
+              $map[] = trim($field);
+            }
+          }
+          $this->maps[$mapname] = $map;
+        }
+        $page = str_replace($mapblock[0], '', $page);
+      }
+
+      $variableblocks = array();
+      preg_match_all('/\[VARIABLES\](.*)?\[ENDVARIABLES\]/sm', $page, $variableblocks, PREG_SET_ORDER);
+      foreach ($variableblocks as $variableblock) {
+        fill_map($variableblock[1], $this->variables);
+        $page = str_replace($variableblock[0], '', $page);
+      }
+
+      // invoke the substitution
+      $this->substitute($page, -1);
+      return $page;
+    }
+
+    function read_template_page(&$event, $param) {
+      global $ACT, $ID;
+      if($_REQUEST['do'] == 'edit') {
+	$meta_file = metaFN($ID, '.mytemplate');
+        if (@file_exists($meta_file)) {
+          $data = unserialize(io_readFile($meta_file));
+          $event->result = $data;
+        }
+      }
+    }
+
+    function write_template_page(&$event, $param) {
+      // see: http://www.dokuwiki.org/devel:event:io_wikipage_write
+      // event data:
+      // $data[0] – The raw arguments for io_saveFile as an array. Do not change file path.
+      // $data[0][0] – the file path.
+      // $data[0][1] – the content to be saved, and may be modified.
+      // $data[1] – ns: The colon separated namespace path minus the trailing page name. (false if root ns)
+      // $data[2] – page_name: The wiki page name.
+      // $data[3] – rev: The page revision, false for current wiki pages.
+      if ($event->data[3]) return false;                      // old revision saved
+
+      global $ACT, $INFO;
+      global $ID;
+      if ($ACT != 'save') {
+        return;
+      }
+
+      if (strstr($event->data[0][1], '~~TEMPLATE~~')) {
+        return;
+      }
+      $meta_file = metaFN($ID, '.mytemplate');
+      io_saveFile($meta_file, serialize($event->data[0][1]));
+
+      $page = $this->process_page($event->data[0][1]);
+      // finally, replace the page with the one we generated
+      $event->data[0][1] = $page;
+      return true;
+    }
+
 
     function do_calculate($formula) {
       // perform calculations
@@ -113,8 +211,9 @@ class action_plugin_mytemplate extends DokuWiki_Action_Plugin {
           $formula = str_replace($var[0], '0', $formula);
         }
       }
-      return eval("return $formula;");
-    } 
+      $result = eval("return $formula;");
+      return $result;
+    }
 
     function do_lookrange($map, $pos) {
       // the map is assumed to have numeric, non-consecutive indices. $pos is rounded down to the nearest
@@ -150,7 +249,7 @@ class action_plugin_mytemplate extends DokuWiki_Action_Plugin {
         $numrows++;
       }
       if (!empty($minrows)) {
-        $emptyrow = preg_replace('/\s*[^|\^]+[^|\^ ]*/', ' \\\\\\ ', $format);
+        $emptyrow = preg_replace('/\s*[^|\^]+[^|\^ ]*/', ' <space> ', $format);
         while ($numrows < $minrows) {
           if ($table != '') $table .= "\n";
           $table .= $emptyrow;
@@ -173,7 +272,8 @@ class action_plugin_mytemplate extends DokuWiki_Action_Plugin {
         }
 
         $repls = array();
-        preg_match_all("/~~(?P<function>VAR|LOOK|LOOKRANGE|CALC|COUNT|LIST|IF|REPLACE|NOINCLUDE)\((?P<pass>[0-9]+)(,(?P<assignment_target>[A-Za-z_][A-Za-z0-9_]*))?\):(?P<param1>([^:~]+|(?R))*)(:(?P<param2>([^:~]+|(?R))*))?(:(?P<param3>([^:~]+|(?R))*))?~(?P<store_only>!)?~/", $text, $matches, PREG_SET_ORDER | PREG_OFFSET_CAPTURE);
+
+        preg_match_all("/~~(?P<function>VAR|LOOK|LOOKRANGE|CALC|COUNT|LIST|IF|REPLACE)\((?P<pass>[0-9]+)(,(?P<assignment_target>[A-Za-z_][A-Za-z0-9_]*))?\):(?P<param1>([^:~]+|(?R))*)(:(?P<param2>([^:~]+|(?R))*))?(:(?P<param3>([^:~]+|(?R))*))?~(?P<store_only>!)?~/", $text, $matches, PREG_SET_ORDER | PREG_OFFSET_CAPTURE);
         foreach ($matches as $match) {
           $function          = $match["function"][0];
           $targetpass        = $match["pass"][0];
@@ -182,6 +282,7 @@ class action_plugin_mytemplate extends DokuWiki_Action_Plugin {
           $param2            = trim($match["param2"][0]);
           $param3            = trim($match["param3"][0]);
           $store_only        = $match["store_only"][0]; // if set, the result is not written to the text
+
           $offset = $match[0][1];
           $len = strlen($match[0][0]);
 
@@ -194,6 +295,7 @@ class action_plugin_mytemplate extends DokuWiki_Action_Plugin {
             if (!empty($param2)) $this->substitute($param2, $pass);
             if (!empty($param3)) $this->substitute($param3, $pass);
           }
+
           switch ($function) {  
             case 'LOOK':
               if (array_key_exists($param1, $this->maps)) {
@@ -241,9 +343,6 @@ class action_plugin_mytemplate extends DokuWiki_Action_Plugin {
             case 'REPLACE':
               $value = preg_replace('\'' . addslashes($param1) . '\'', $param2, $param3);
             break;
-            case 'NOINCLUDE':
-              $value = '';
-            break;
           }
           if ($assignment_target) {
             $this->variables[$assignment_target] = $value;
@@ -266,72 +365,16 @@ class action_plugin_mytemplate extends DokuWiki_Action_Plugin {
 
 
     function handle_content_display(&$event, $params) {
-      global $ACT, $INFO;
-      if (($ACT != 'show') && ($ACT != 'save')) {
-        return;
-      }
-
-      if (strstr($event->data, '~~TEMPLATE~~')) {
-        $event->data = str_replace('~~TEMPLATE~~', '', $event->data);
-        $event->data = preg_replace('/~~NOINCLUDE\([0-9]+\):([^~]*)~~/', '\1', $event->data);
-        return;
-      }
-
-      $page = $event->data;
-
-      // integrate all includes
-      $includematches = array();
-      preg_match_all('/\[INCLUDE:([^\]]*)\]/', $page, $includematches, PREG_SET_ORDER);
-      foreach ($includematches as $includematch) {
-        $includeid = $includematch[1];
-        $file = wikiFN($includeid, '');
-        if (@file_exists($file)) {
-          $content = io_readWikiPage($file, $includeid);
+      global $ACT, $INFO, $ID;
+      if ($ACT == 'preview') {
+        if (strpos($event->data, '~~TEMPLATE~~') !== false) {
+          $event->data = str_replace('~~TEMPLATE~~', '', $event->data);
+        } else {
+          $event->data = $this->process_page($event->data);
         }
-        if (!$content) {
-          $page = str_replace($includematch[0], "include \"$includeid\" not found", $page);
-          continue;
-        }
-        $page = str_replace($includematch[0], $content, $page);
       }
- 
-      $page = str_replace('~~TEMPLATE~~', '', $page);
-
-      // interpret and remove all maps and variable blocks
-      $mapblocks = array();
-      preg_match_all('/\[MAPS\](.*)?\[ENDMAPS\]/sm', $page, $mapblocks, PREG_SET_ORDER);
-      foreach($mapblocks as $mapblock) {
-        fill_map($mapblock[1], $this->maps);
-        // at this point, maps are stored as strings, we need to convert them
-        foreach(array_keys($this->maps) as $mapname) {
-          $list = explode(',', $this->maps[$mapname]);
-          $map  = array();
-          foreach ($list as $field) {
-            if ($pos = strpos($field, '=')) {
-              $map[trim(substr($field, 0, $pos))] = trim(substr($field, $pos + 1));
-            } else {
-              // no key found => append
-              $map[] = trim($field);
-            }
-          }
-          $this->maps[$mapname] = $map;
-        }
-        $page = str_replace($mapblock[0], '', $page);
-      }
-
-      $variableblocks = array();
-      preg_match_all('/\[VARIABLES\](.*)?\[ENDVARIABLES\]/sm', $page, $variableblocks, PREG_SET_ORDER);
-      foreach ($variableblocks as $variableblock) {
-        fill_map($variableblock[1], $this->variables);
-        $page = str_replace($variableblock[0], '', $page);
-      }
-
-      // invoke the substitution
-      $this->substitute($page, -1);
-
-      // finally, replace the page with the one we generated
-      $event->data = $page;
       return true;
     }
 }
 
+?>
